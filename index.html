@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f6f8">
+  <meta name="description" content="尊敬的车主，能刹停几次？从100 km/h开始，按住刹车、松手减压。停进绿区闯关，提前停住可重试，满力过载会断杆。">
+  <title>尊敬的车主，能刹停几次？</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23f26435'/%3E%3Cpath d='M11 9v14M21 9v14' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="game-shell">
+    <header class="header">
+      <div class="brand"><h1>尊敬的车主，<br>能刹停几次<span>？</span></h1><p>100 km/h 出发，脚下留点余地。</p></div>
+      <div class="utilities">
+        <button id="sound" class="icon-button" aria-label="开启声音" title="开启声音" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path id="sound-waves" d="m16 9 5 6m0-6-5 6"/></svg></button>
+        <button id="pause" class="icon-button" aria-label="暂停游戏" title="暂停游戏" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 5v14M16 5v14"/></svg></button>
+      </div>
+    </header>
+    <section class="arena" aria-label="精准停车游戏">
+      <div class="round-bar">
+        <div class="level"><span class="eyebrow">当前关卡</span><span><strong id="level">01</strong><span class="level-total"> / 20</span></span></div>
+        <div class="record"><span class="eyebrow">本轮顺利刹停</span><strong id="stop-count">0</strong><span> 次</span></div>
+      </div>
+      <div class="track-wrap" id="track-wrap">
+        <canvas id="track" aria-label="赛道：将车辆前方的橙色标记停在绿色停车区内"></canvas>
+        <div class="telemetry speed"><span class="eyebrow">车速</span><div><strong id="speed">100</strong><span class="unit">km/h</span></div></div>
+        <div class="telemetry distance"><span class="eyebrow" id="distance-label">距目标中心</span><div><strong id="distance">110.0</strong><span class="unit">m</span></div></div>
+        <div class="scene-message" id="message" hidden><span id="result-tag" class="result-tag">准备好了吗</span><h2 id="result-title">停进绿区，就算过关。</h2><p id="result-copy">按住刹车，松手减力。</p></div>
+        <div class="countdown" id="countdown" hidden>准备</div>
+        <div class="track-caption" id="track-caption"><span class="marker-key"></span>以车前橙色标记为准</div>
+      </div>
+      <div class="control-area">
+        <div class="pressure-heading"><span id="control-hint">停进绿区，满力要松手</span><span id="pressure-text">制动力 <b id="pressure-value">0</b><small>%</small></span></div>
+        <div class="pressure-track" role="progressbar" aria-label="制动力" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="pressure-meter"><div id="pressure-fill"></div></div>
+        <div class="overload-row"><span id="overload-label">满力过载 0.8 秒会断杆</span><div class="overload-track" role="progressbar" aria-label="过载积累" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="overload-meter"><div id="overload-fill"></div></div></div>
+        <button class="pedal" id="pedal"><svg class="rod-icon" viewBox="0 0 48 56" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="rod-upper"><circle cx="15" cy="7" r="4"/><path d="M15 11v14"/></g><g class="rod-lower"><path d="M15 25v9l12 9"/><rect x="22" y="40" width="21" height="10" rx="3"/><path d="M28 43v4m6-4v4" stroke-width="1.5"/></g><path class="rod-crack" d="m8 24 7-3-2 7 8-3" stroke-width="2"/></svg><span id="pedal-label">开始挑战</span><span id="pedal-note">按住加力，松手减压</span></button>
+        <div class="control-footer"><span class="desktop-help"><kbd>空格</kbd> 也可以操作</span><span class="touch-help">按住加力 · 松开减力</span><span id="streak">准备出发</span></div>
+      </div>
+    </section>
+    <footer class="page-footer"><span id="best">提前停住可重试本关</span><button id="restart" class="text-button" hidden>重新挑战</button></footer>
+    <aside class="ad-space" aria-label="底部广告预留区域"><span class="ad-label">AD</span><span>广告预留位</span></aside>
+    <p class="sr-only" id="announcer" role="status" aria-live="polite"></p>
+  </main>
+  <dialog id="settlement" aria-labelledby="settlement-title" aria-describedby="settlement-summary">
+    <div class="settlement-card">
+      <span id="settlement-tag" class="result-tag">本轮挑战结束</span>
+      <h2 id="settlement-title">刹车杆断裂</h2>
+      <p class="settlement-greeting">尊敬的车主，</p>
+      <p id="settlement-summary" class="settlement-summary"><span id="completed-prefix">您已闯过</span> <strong id="settlement-level">0</strong><span id="completed-suffix"> 关，</span><br>顺利刹停 <strong id="settlement-stops">0</strong> 次。</p>
+      <p id="settlement-note" class="settlement-note">满力时记得松手减压。</p>
+      <button id="settlement-retry" class="settlement-primary" autofocus>再来一轮</button>
+      <button id="settlement-close" class="settlement-secondary">查看赛道</button>
+    </div>
+  </dialog>
+  <script type="module" src="./game.js"></script>
+</body>
+</html>
