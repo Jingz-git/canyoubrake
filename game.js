@@ -1,6 +1,7 @@
 import { LEVELS, STEP, OVERLOAD_LIMIT, createRun, stepRun, createProgress, settleAttempt } from './physics.js';
 import { GameAudio } from './audio.js';
 import { projectGround } from './projection.js';
+import { loadCarModel } from './car-model.js';
 const audio = new GameAudio();
 const $ = id => document.getElementById(id);
 const canvas = $('track');
@@ -11,15 +12,29 @@ let progress = createProgress(), best = { level: 0, precision: null }, muted = f
 let previousStop = null, pointerWasBrake = false, activePointer = null;
 let breakTime = 0, visualDrift = 0, resultReadyAt = 0;
 const arena = document.querySelector('.arena');
-// Some embedded mobile browsers still open a selection menu despite CSS.
-// Keep this scoped to the game; scrolling and text outside it remain native.
-for (const eventName of ['contextmenu', 'selectstart', 'dragstart']) {
-  arena.addEventListener(eventName, event => event.preventDefault());
+// Include the record footer: mobile selection can escape the pedal/card.
+// Do not interfere with future input fields or the separate advertising slot.
+const selectionRoots = [...document.querySelectorAll('.arena,.header,.page-footer,#settlement')];
+const protectedText = node => {
+  const element = node?.nodeType === 1 ? node : node?.parentElement;
+  return element && !element.closest('input,textarea,[contenteditable="true"]') && selectionRoots.some(root => root.contains(element));
+};
+function clearGameSelection() {
+  const selection = window.getSelection();
+  if (selection && !selection.isCollapsed && (protectedText(selection.anchorNode) || protectedText(selection.focusNode))) selection.removeAllRanges();
 }
+for (const root of selectionRoots) {
+  for (const eventName of ['contextmenu', 'selectstart', 'dragstart']) {
+    root.addEventListener(eventName, event => { if (protectedText(event.target)) { event.preventDefault(); clearGameSelection(); } }, { capture: true });
+  }
+  root.addEventListener('pointerdown', clearGameSelection, { capture: true });
+  root.addEventListener('pointerup', clearGameSelection, { capture: true });
+}
+document.addEventListener('selectionchange', clearGameSelection);
 const settlement = $('settlement');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const car = new Image();
-car.src = './assets/car.png';
+let car = null;
+loadCarModel().then(image => { car = image; }).catch(error => console.warn(error.message));
 try { const saved = JSON.parse(localStorage.getItem('brake-once-v2')); if (saved && Number.isInteger(saved.level) && saved.level >= 0 && saved.level <= 20) best = { level: saved.level, precision: Number.isFinite(saved.precision) && saved.precision >= 0 ? saved.precision : null }; muted = localStorage.getItem('brake-once-muted') === 'true'; } catch {}
 function storeBest() { try { localStorage.setItem('brake-once-v2', JSON.stringify(best)); } catch {} }
 function resize() { const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height; const ratio = Math.min(devicePixelRatio || 1, 2); canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); ctx.setTransform(ratio, 0, 0, ratio, 0, 0); draw(); }
@@ -28,7 +43,7 @@ function rounded(x, y, w, h, radius, fill) { ctx.beginPath(); ctx.roundRect(x, y
 function draw() {
   if (!width || !height) return;
   const level = LEVELS[levelIndex];
-  const anchor = Math.min(height * .73, height - 108);
+  const anchor = Math.min(height * .73, height - 128);
   const viewPosition = run.position + visualDrift;
   const cx = width / 2, roadWidth = width < 520 ? 144 : 174;
   const point = (pos, x = 0) => { const p = projectGround(pos - viewPosition, anchor); return { x: cx + x * p.scale, y: p.y }; };
@@ -62,11 +77,11 @@ function draw() {
   }
   if(previousStop && previousStop.level===levelIndex && state==='running' && previousStop.position>near) line(previousStop.position,roadWidth/2-18,'#d7ad96',[3,4]);
   ctx.restore();
-  if (car.complete && car.naturalWidth) {
-    const carWidth = 43, carHeight = 83;
-    ctx.save(); ctx.shadowColor = '#1b243526'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 5;
-    ctx.drawImage(car, cx - carWidth / 2, anchor - 13, carWidth, carHeight); ctx.restore();
-  } else { rounded(cx - 15, anchor + 5, 30, 48, 8, '#f26435'); }
+  if (car) {
+    const carWidth = 72, carHeight = carWidth * car.height / car.width;
+    ctx.save(); ctx.shadowColor = '#18212d35'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 3;
+    ctx.drawImage(car, cx - carWidth / 2, anchor + 4, carWidth, carHeight); ctx.restore();
+  } else { rounded(cx - 18, anchor + 5, 36, 48, 8, '#f4c126'); }
   ctx.strokeStyle = '#f26435'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(cx - 28, anchor); ctx.lineTo(cx + 28, anchor); ctx.stroke();
   ctx.fillStyle = '#f26435'; ctx.beginPath(); ctx.arc(cx - 28, anchor, 3, 0, Math.PI * 2); ctx.arc(cx + 28, anchor, 3, 0, Math.PI * 2); ctx.fill();
   const fade = ctx.createLinearGradient(0, height - 55, 0, height - 24); fade.addColorStop(0, '#ffffff00'); fade.addColorStop(1, '#ffffff'); ctx.fillStyle = fade; ctx.fillRect(0, height - 55, width, 31);
