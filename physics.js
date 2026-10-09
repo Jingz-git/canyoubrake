@@ -6,21 +6,26 @@ export const COOLING_RATE = 2;
 export const LEVELS = Array.from({ length: 20 }, (_, i) => Object.freeze({
   number: i + 1,
   speed: INITIAL_SPEED,
-  target: 110 + [0, 8, -6, 4, -2][i % 5] + Math.floor(i / 5) * 3,
-  halfWidth: i < 3 ? [10, 8, 6.5][i] : Math.max(1.8, 5.5 - (i - 3) * .23),
-  timeLimit: i < 3 ? [12, 11.5, 11][i] : i < 7 ? 10.5 : i < 12 ? 10 : i < 17 ? 9.5 : 9,
+  target: i === 1 ? 105 : 110 + [0, 8, -6, 4, -2][i % 5] + Math.floor(i / 5) * 3,
+  halfWidth: i === 0 ? 12 : i === 1 ? 6 : i < 5 ? 5.5 - (i - 2) * .5 : i < 12 ? 4 - (i - 5) / 6 : 2.8 - (i - 12) / 7,
+  timeLimit: i === 0 ? 12 : i === 1 ? 11 : i < 5 ? 10.5 : i < 12 ? 10 : i < 17 ? 9.5 : 9,
+  pressureRise: i === 0 ? .28 : .18,
   perfectWidth: Math.max(.3, .95 - i * .035),
   maxDecel: 9,
 }));
 
-export function createRun(level) {
-  return { position: 0, speed: level.speed, pressure: 0, overload: 0, elapsed: 0, result: null, settled: false };
+export function createRun(level, tutorial = false) {
+  return { position: 0, speed: level.speed, pressure: 0, overload: 0, elapsed: 0, result: null, settled: false, tutorial: tutorial ? 'active' : null };
 }
 
 export function stepRun(run, level, held, dt = STEP) {
   if (run.result || !Number.isFinite(dt) || dt <= 0) return run;
+  if (run.tutorial === 'release') {
+    if (!held) run.tutorial = 'done';
+    return run;
+  }
   run.elapsed += dt;
-  run.pressure += ((held ? 1 : 0) - run.pressure) * (1 - Math.exp(-dt / (held ? .28 : .18)));
+  run.pressure += ((held ? 1 : 0) - run.pressure) * (1 - Math.exp(-dt / (held ? level.pressureRise : .18)));
   // Full pressure is explicit, so the displayed 100% and overload clock agree.
   if (held && run.pressure >= .98) run.pressure = 1;
   run.overload = run.pressure === 1
@@ -50,6 +55,7 @@ export function stepRun(run, level, held, dt = STEP) {
     run.result = { success: false, reason: 'timeout', error };
     run.pressure = 0;
   }
+  if (!run.result && run.tutorial === 'active' && run.pressure >= .9) run.tutorial = 'release';
   return run;
 }
 

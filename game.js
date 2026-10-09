@@ -7,8 +7,9 @@ const $ = id => document.getElementById(id);
 const canvas = $('track');
 const ctx = canvas.getContext('2d');
 let width = 0, height = 0, levelIndex = 0, state = 'ready', held = false;
-let run = createRun(LEVELS[0]), lastTime = 0, accumulator = 0, countdown = 0;
+let run = createRun(LEVELS[0], true), lastTime = 0, accumulator = 0, countdown = 0;
 let progress = createProgress(), best = { level: 0, precision: null }, muted = false;
+let tutorialCompleted = false, tutorialMessage = false;
 let previousStop = null, pointerWasBrake = false, activePointer = null;
 let breakTime = 0, visualDrift = 0, resultReadyAt = 0;
 const arena = document.querySelector('.arena');
@@ -92,7 +93,11 @@ function updateUI() {
   const remaining = Math.max(0, LEVELS[levelIndex].timeLimit - run.elapsed);
   $('time-left').textContent = remaining.toFixed(1);
   $('attempt-clock').classList.toggle('urgent', remaining <= 2);
-  $('difficulty').textContent = levelIndex < 3 ? '轻松入门' : levelIndex < 7 ? '找到节奏' : levelIndex < 12 ? '精准进阶' : levelIndex < 17 ? '高手挑战' : '极限停车';
+  $('difficulty').textContent = levelIndex === 0 ? '教程入门' : levelIndex < 5 ? '节奏挑战' : levelIndex < 12 ? '精准进阶' : levelIndex < 17 ? '高手挑战' : '极限停车';
+  if (run.tutorial === 'done') tutorialCompleted = true;
+  if (state === 'running' && run.tutorial === 'release') {
+    if (!tutorialMessage) { message('教程 · 时间已暂停', '现在松手，降低制动力', '松开刹车后继续。满力过载 0.4 秒会断杆。'); tutorialMessage = true; audio.stop(); }
+  } else if (tutorialMessage && state === 'running') { $('message').hidden = true; tutorialMessage = false; }
   $('level').textContent = String(levelIndex + 1).padStart(2, '0');
   $('speed').textContent = Math.round(run.speed * 3.6);
   $('distance').textContent = Math.abs(LEVELS[levelIndex].target - run.position).toFixed(1);
@@ -111,6 +116,10 @@ function updateUI() {
   $('overload-label').textContent = run.result?.reason === 'broken' ? '满力过载 · 刹车杆已断裂' : run.overload > .005 ? `过载 ${run.overload.toFixed(1)} / ${OVERLOAD_LIMIT.toFixed(1)} 秒${pressure < 100 ? ' · 消退中' : ''}` : `满力过载 ${OVERLOAD_LIMIT.toFixed(1)} 秒会断杆`;
   $('overload-label').classList.toggle('danger', run.overload > OVERLOAD_LIMIT * .4375);
   if (state === 'running') $('control-hint').textContent = pressure === 100 ? '过载！松手减压' : run.overload > .01 ? '保持松手，让过载消退' : pressure >= 75 ? '接近满力，准备松手' : '停进绿区，满力要松手';
+  if (state === 'running' && levelIndex === 0) {
+    if (run.tutorial === 'release') $('control-hint').textContent = '松开按钮或空格继续';
+    else if (run.pressure < .1 && run.position < 65) $('control-hint').textContent = run.position < 42 ? '先观察目标，准备刹车' : '现在按住刹车';
+  }
   $('pause').disabled = !['running', 'countdown', 'paused'].includes(state);
   $('pause').setAttribute('aria-label', state === 'paused' ? '继续游戏' : '暂停游戏');
   $('pause').title = state === 'paused' ? '继续游戏' : '暂停游戏';
@@ -126,7 +135,7 @@ function updateUI() {
 }
 function prepare(index, fresh = false) {
   audio.stop(); audio.unlock(!muted);
-  levelIndex = index; run = createRun(LEVELS[index]); accumulator = 0; held = false;
+  levelIndex = index; run = createRun(LEVELS[index], index === 0 && !tutorialCompleted); tutorialMessage = false; accumulator = 0; held = false;
   if (fresh) { progress = createProgress(); previousStop = null; }
   visualDrift = 0; breakTime = 0; resultReadyAt = 0;
   if (settlement.open) settlement.close();
@@ -145,6 +154,10 @@ function finish() {
     message(state === 'complete' ? '20 / 20 · 全部通过' : `第 ${progress.completed} 关通过`, state === 'complete' ? '这一脚，满分收官。' : result.perfect ? 'Perfect！' : '稳稳停住。', `偏离中心 ${Math.abs(result.error).toFixed(2)} 米${result.perfect ? ' · 刚刚好' : ''}`, `success ${result.perfect ? 'perfect' : ''}`);
     setPedal(state === 'complete' ? '再挑战一次' : '下一关', state === 'complete' ? '刷新你的最佳精度' : `第 ${progress.completed + 1} 关，继续稳住`, true);
     $('control-hint').textContent = result.perfect ? '漂亮！这一脚刚刚好。' : '停进绿区，挑战成功。'; sound(true, result.perfect);
+    if (levelIndex === 0 && state === 'success') {
+      $('result-copy').textContent = '教程结束：下一关加力更快，满力 0.4 秒会断杆。';
+      $('announcer').textContent = $('result-copy').textContent;
+    }
     if (state === 'complete') showSettlement();
   } else if (result.reason === 'timeout') {
     state = 'retry';
@@ -187,7 +200,7 @@ function showSettlement() {
   $('announcer').textContent = `尊敬的车主，您已闯过 ${progress.completed} 关，顺利刹停 ${progress.stops} 次。`;
 }
 function pause() { if (!['running', 'countdown'].includes(state)) return; state = 'paused'; audio.stop(); held = false; activePointer = null; accumulator = 0; $('countdown').hidden = true; message('休息一下', '稳住，随时继续。', '继续后会给你 1 秒准备时间。'); setPedal('继续挑战', '调整好，再出发'); $('control-hint').textContent = '游戏已暂停'; updateUI(); }
-function resume() { if (state !== 'paused') return; audio.unlock(!muted); held = false; state = 'countdown'; countdown = 1; $('message').hidden = true; $('countdown').hidden = false; $('countdown').textContent = '准备继续'; setPedal('按住刹车', '松开减力'); $('control-hint').textContent = '把橙色标记停进绿区'; lastTime = performance.now(); accumulator = 0; updateUI(); }
+function resume() { if (state !== 'paused') return; tutorialMessage = false; audio.unlock(!muted); held = false; state = 'countdown'; countdown = 1; $('message').hidden = true; $('countdown').hidden = false; $('countdown').textContent = '准备继续'; setPedal('按住刹车', '松开减力'); $('control-hint').textContent = '把橙色标记停进绿区'; lastTime = performance.now(); accumulator = 0; updateUI(); }
 function action() { if (performance.now() < resultReadyAt || settlement.open) return; if (state === 'paused') resume(); else if (state === 'success') prepare(levelIndex + 1); else if (state === 'retry') prepare(levelIndex); else if (['ready', 'failed', 'complete'].includes(state)) prepare(0, true); }
 $('pedal').addEventListener('pointerdown', event => { if (event.button !== 0 || activePointer !== null) return; pointerWasBrake = state === 'running'; if (state === 'running') { activePointer = event.pointerId; held = true; $('pedal').setPointerCapture(event.pointerId); updateUI(); event.preventDefault(); } });
 $('pedal').addEventListener('pointerup', event => { if (activePointer !== event.pointerId) return; activePointer = null; held = false; updateUI(); });
@@ -218,7 +231,7 @@ function frame(time) {
       showSettlement();
     }
   }
-  audio.music(state === 'running' && !document.hidden);
+  audio.music(state === 'running' && run.tutorial !== 'release' && !document.hidden);
   updateUI(); draw(); requestAnimationFrame(frame);
 }
 updateSound(); updateUI(); requestAnimationFrame(frame);
@@ -227,7 +240,7 @@ updateSound(); updateUI(); requestAnimationFrame(frame);
 const modelContext = document.modelContext;
 if (modelContext?.registerTool) {
   const lifecycle = new AbortController();
-  const snapshot = () => ({ state, level: levelIndex + 1, completed: progress.completed, stops: progress.stops, speedKmh: +(run.speed * 3.6).toFixed(2), distanceToTarget: +(LEVELS[levelIndex].target - run.position).toFixed(3), pressure: +run.pressure.toFixed(3), overload: +run.overload.toFixed(3), braking: held, elapsed: +run.elapsed.toFixed(3), timeLimit: LEVELS[levelIndex].timeLimit, remaining: Math.max(0, LEVELS[levelIndex].timeLimit-run.elapsed), result: run.result, best });
+  const snapshot = () => ({ state, level: levelIndex + 1, completed: progress.completed, stops: progress.stops, speedKmh: +(run.speed * 3.6).toFixed(2), distanceToTarget: +(LEVELS[levelIndex].target - run.position).toFixed(3), pressure: +run.pressure.toFixed(3), overload: +run.overload.toFixed(3), braking: held, elapsed: +run.elapsed.toFixed(3), timeLimit: LEVELS[levelIndex].timeLimit, remaining: Math.max(0, LEVELS[levelIndex].timeLimit-run.elapsed), result: run.result, tutorial: run.tutorial, best });
   const register = tool => { try { Promise.resolve(modelContext.registerTool(tool, { signal: lifecycle.signal })).catch(() => {}); } catch {} };
   register({ name: 'get_game_state', title: '查看游戏状态', description: 'Read the current braking game state, remaining distance, pressure, level, and outcome.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, execute(input) { if (!input || typeof input !== 'object' || Object.keys(input).length) throw new Error('Expected an empty object.'); return snapshot(); } });
   register({ name: 'control_game', title: '控制挑战进度', description: 'Start, pause, resume, retry the current level after an early stop, restart the challenge, or advance after winning. Cannot skip levels.', inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['start', 'pause', 'resume', 'retry', 'restart', 'next'] } }, required: ['action'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute(input) { if (!input || typeof input !== 'object' || Object.keys(input).some(k => k !== 'action')) throw new Error('Invalid action input.'); const valid = { start: ['ready', 'failed', 'complete'], pause: ['running', 'countdown'], resume: ['paused'], retry: ['retry'], restart: ['success', 'retry', 'failed', 'complete', 'paused'], next: ['success'] }; if (!valid[input.action]?.includes(state)) throw new Error(`Action ${input.action} is not available in ${state}.`); if (input.action === 'pause') pause(); else if (input.action === 'resume') resume(); else if (input.action === 'next') prepare(levelIndex + 1); else if (input.action === 'retry') prepare(levelIndex); else prepare(0, true); updateUI(); return snapshot(); } });
