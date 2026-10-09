@@ -1,13 +1,14 @@
 export const STEP = 1 / 120;
 export const INITIAL_SPEED = 100 / 3.6;
-export const OVERLOAD_LIMIT = .8;
+export const OVERLOAD_LIMIT = .4;
 export const COOLING_RATE = 2;
 
 export const LEVELS = Array.from({ length: 20 }, (_, i) => Object.freeze({
   number: i + 1,
   speed: INITIAL_SPEED,
   target: 110 + [0, 8, -6, 4, -2][i % 5] + Math.floor(i / 5) * 3,
-  halfWidth: i < 3 ? [6, 5.5, 5][i] : Math.max(1.8, 4.7 - (i - 3) * .18),
+  halfWidth: i < 3 ? [10, 8, 6.5][i] : Math.max(1.8, 5.5 - (i - 3) * .23),
+  timeLimit: i < 3 ? [12, 11.5, 11][i] : i < 7 ? 10.5 : i < 12 ? 10 : i < 17 ? 9.5 : 9,
   perfectWidth: Math.max(.3, .95 - i * .035),
   maxDecel: 9,
 }));
@@ -43,6 +44,11 @@ export function stepRun(run, level, held, dt = STEP) {
     run.overload = 0;
     const success = Math.abs(error) <= level.halfWidth;
     run.result = { success, reason: success ? 'parked' : 'early', error, perfect: success && Math.abs(error) <= level.perfectWidth };
+  }
+  if (!run.result && run.elapsed >= level.timeLimit - 1e-9) {
+    run.elapsed = level.timeLimit;
+    run.result = { success: false, reason: 'timeout', error };
+    run.pressure = 0;
   }
   return run;
 }
